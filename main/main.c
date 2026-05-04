@@ -8,11 +8,13 @@
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "driver/adc.h"
+#include <string.h>
 
 //FUNCTION DEF
 void setup_gpio();
 char readKeyPadNoBlock(char _keys[4][4], int _scanColPins[4], int _rowPins[4]);
 float readTemperature(adc1_channel_t channel, float nominalRes, float B);
+void appendToString(char character, char string[]);
 
 //VARIABLES
 #define ROWS 4
@@ -25,6 +27,9 @@ float readTemperature(adc1_channel_t channel, float nominalRes, float B);
 int scanRowPins[ROWS] = {38, 37, 36, 35};
 int colPins[COLS] = {39, 45, 48, 47};
 char lastKey = '\0';
+int blueTimer = 0;
+char code[5] = "";
+char codeCorrect[] = "1234";
 
     //2d array of chars on the keypad
 char keys[ROWS][COLS] = {
@@ -40,29 +45,63 @@ void app_main() {
     //run the setup to initialize the pins
     setup_gpio(); 
 
+    //prompt for keycode
+    printf("Enter Key Code:\n");
+
     //main loop
     while (1) {
-        char key = readKeyPadNoBlock(keys, colPins, scanRowPins); 
 
-        //check if "scan_keypad" returned a button press different to the last one
-        if (key != '\0' && key != lastKey) {
-          printf("You pressed: %c\n", key);
-          gpio_set_level(BUZZER, 1);
-          gpio_set_level(BLUE_LED, 1);
-          gpio_set_level(GREEN_LED, 1);
-          gpio_set_level(RED_LED, 1);
-          vTaskDelay(pdMS_TO_TICKS(200));
-          gpio_set_level(BUZZER, 0);
+        //blink blue LED
+        if (blueTimer == 100) {blueTimer = 0; gpio_set_level(BLUE_LED, !gpio_get_level(BLUE_LED));}
+        //timer for blue LED
+        blueTimer += 5;
+
+        //check if a 4-digit code has not been inputted
+        if (code[3] == '\0')
+        {
+            //read keypad
+            char key = readKeyPadNoBlock(keys, colPins, scanRowPins); 
+
+            //check if "scan_keypad" returned a button press different to the last one
+            if (key != '\0' && key != lastKey) {
+            printf("*");
+            appendToString(key, code);
+            printf("%s\n", code);
+            }
+            
+            //change last key pressed
+            lastKey = key;
         }
-        vTaskDelay(pdMS_TO_TICKS(50));
-        
-        //change last key pressed
-        lastKey = key;
 
-        //***************
+        //if the last digit of the code has been inputted
+        else
+        {
+            //incorrect code
+            if (strcmp(code, codeCorrect))
+            {
+                gpio_set_level(RED_LED, 1);
+                gpio_set_level(BUZZER, 1);
+                printf("Access Denied!\n");
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                gpio_set_level(RED_LED, 0);
+                gpio_set_level(BUZZER, 0);
+            }
+            //correct code
+            else
+            {
+                gpio_set_level(GREEN_LED, 1);
+                printf("Access Granted!\n");
+                float tempC = readTemperature(THERMO, 10000.0, 3950.0);
+                printf("Current temperature is: %.2lf°C\n", tempC);
+                vTaskDelay(pdMS_TO_TICKS(5000));
+                gpio_set_level(GREEN_LED, 0);
+            }
 
-        float tempC = readTemperature(THERMO, 10000.0, 3950.0);
-        printf("Current temperature is: %.2lf°C\n", tempC);
+            //reset code
+            code = "";
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
@@ -95,7 +134,7 @@ void setup_gpio()
     gpio_set_direction(BUZZER, GPIO_MODE_OUTPUT);
 
     //setup leds
-    gpio_set_direction(BLUE_LED, GPIO_MODE_OUTPUT);
+    gpio_set_direction(BLUE_LED, GPIO_MODE_INPUT_OUTPUT);
     gpio_set_direction(RED_LED, GPIO_MODE_OUTPUT);
     gpio_set_direction(GREEN_LED, GPIO_MODE_OUTPUT);
 
@@ -148,4 +187,12 @@ float readTemperature(adc1_channel_t channel, float nominalRes, float B)
     float thermoTemp = (1.0 / ((1.0/298.15) + (log(Rt/nominalRes)/B) )) - 273.15;
     thermoTemp = (1.0 / ((1.0/298.15) + (log(Rt/9700.0)/3950.0) )) - 273.15;
     return thermoTemp;
+}
+
+void appendToString(char character, char string[])
+{
+    for (int i = 0; i < sizeof(string); i++)
+    {
+        if (string[i] == '\0') {string[i] = character; break;}
+    }
 }
