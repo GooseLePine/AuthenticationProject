@@ -31,7 +31,7 @@ int blueTimer = 0;
 char code[5] = "";
 char codeCorrect[] = "1234";
 
-    //2d array of chars on the keypad
+//2d array of chars on the keypad
 char keys[ROWS][COLS] = {
     {'1', '2', '3', 'A'},
     {'4', '5', '6', 'B'},
@@ -57,16 +57,16 @@ void app_main() {
         blueTimer += 5;
 
         //check if a 4-digit code has not been inputted
-        if (code[3] == '\0')
+        if (strlen(code) < 4)
         {
             //read keypad
             char key = readKeyPadNoBlock(keys, colPins, scanRowPins); 
 
             //check if "scan_keypad" returned a button press different to the last one
             if (key != '\0' && key != lastKey) {
-            printf("*");
-            appendToString(key, code);
-            printf("%s\n", code);
+                putchar('*'); //less resource intensive than printf
+                fflush(stdout); //flush the buffer to the standard output
+                appendToString(key, code);
             }
             
             //change last key pressed
@@ -76,12 +76,15 @@ void app_main() {
         //if the last digit of the code has been inputted
         else
         {
+            //turn off blue LED
+            gpio_set_level(BLUE_LED, 0);
+
             //incorrect code
             if (strcmp(code, codeCorrect))
             {
                 gpio_set_level(RED_LED, 1);
                 gpio_set_level(BUZZER, 1);
-                printf("Access Denied!\n");
+                printf("\nAccess Denied!\n");
                 vTaskDelay(pdMS_TO_TICKS(2000));
                 gpio_set_level(RED_LED, 0);
                 gpio_set_level(BUZZER, 0);
@@ -90,7 +93,7 @@ void app_main() {
             else
             {
                 gpio_set_level(GREEN_LED, 1);
-                printf("Access Granted!\n");
+                printf("\nAccess Granted!\n");
                 float tempC = readTemperature(THERMO, 10000.0, 3950.0);
                 printf("Current temperature is: %.2lf°C\n", tempC);
                 vTaskDelay(pdMS_TO_TICKS(5000));
@@ -98,7 +101,10 @@ void app_main() {
             }
 
             //reset code
-            code = "";
+            memset(code, 0, sizeof(code)); //sets the characters in the string "code" to 0
+
+            //new prompt
+            printf("\nEnter Key Code:\n");
         }
 
         vTaskDelay(pdMS_TO_TICKS(20));
@@ -189,9 +195,14 @@ float readTemperature(adc1_channel_t channel, float nominalRes, float B)
     return thermoTemp;
 }
 
+/* Function Name    - appendToString
+ * Description      - appends a character to the end of a 4 character string
+ * Return type      - void
+ * Parameters       - the character to append and the string to append it to
+ */
 void appendToString(char character, char string[])
 {
-    for (int i = 0; i < sizeof(string); i++)
+    for (int i = 0; i < 4; i++)
     {
         if (string[i] == '\0') {string[i] = character; break;}
     }
